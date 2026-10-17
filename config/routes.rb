@@ -18,6 +18,7 @@ Rails.application.routes.draw do
       resources :warehouses, only: %i[
         index show create update destroy
       ]
+      resources :inventories, only: %i[index create]
       resources :warehouse_items, only: %i[
         index show create update destroy
       ]

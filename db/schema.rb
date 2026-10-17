@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_17_090000) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_17_164546) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -20,6 +20,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_17_090000) do
     t.integer "quantity_available"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.index ["warehouse_id", "product_id"], name: "index_inventories_on_warehouse_id_and_product_id", unique: true
   end
 
   create_table "order_items", force: :cascade do |t|
