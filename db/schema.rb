@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[8.1].define(version: 2026_10_17_060805) do
+ActiveRecord::Schema[8.1].define(version: 2026_10_17_090000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "pg_catalog.plpgsql"
 
@@ -45,6 +45,13 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_17_060805) do
     t.string "sku"
     t.string "category"
     t.boolean "requires_cold_chain"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "warehouse_items", force: :cascade do |t|
+    t.integer "product_id"
+    t.integer "qty"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
   end

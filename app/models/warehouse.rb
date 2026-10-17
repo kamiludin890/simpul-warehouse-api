@@ -1,4 +1,5 @@
 class Warehouse < ApplicationRecord
+  has_many :warehouse_items, dependent: :destroy
   validates :code, :name, :city, :distance_km, presence: true
   validates :distance_km, numericality: { greater_than_or_equal_to: 0 }
   validates :has_refrigerated_storage, :has_refrigerated_vehicles,
