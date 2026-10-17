@@ -9,7 +9,13 @@ Rails.application.routes.draw do
   # root "posts#index"
   namespace :api do
     namespace :v1 do
+      resources :orders, only: %i[
+        index show create update destroy
+      ]
       resources :products, only: %i[
+        index show create update destroy
+      ]
+      resources :warehouses, only: %i[
         index show create update destroy
       ]
     end
