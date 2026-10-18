@@ -103,8 +103,26 @@ module Api
       end
 
       def destroy
-        @order.destroy!
+        Order.transaction do
+          @order.order_items.each do |order_item|
+            inventory = Inventory.lock.find_by!(
+              product_id: order_item.product_id,
+              warehouse_id: order_item.warehouse_id || @order.warehouse_id
+            )
+            inventory.update!(
+              quantity_available:
+                inventory.quantity_available + order_item.quantity
+            )
+          end
+
+          @order.destroy!
+        end
+
         head :no_content
+      rescue ActiveRecord::RecordNotFound
+        render json: {
+          errors: [ "Stok untuk salah satu item order tidak ditemukan" ]
+        }, status: :unprocessable_entity
       end
 
       private
