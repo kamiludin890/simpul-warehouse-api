@@ -23,7 +23,7 @@ default: &default
 development:
   <<: *default
   database: warehouse_api_development 
-  username: <%= ENV.fetch("DB_USERNAME", "kamil") %>
+  username: <%= ENV.fetch("DB_USERNAME", "root") %>
   password: <%= ENV.fetch("DB_PASSWORD", "") %>
   host: 127.0.0.1
   port: 5432
