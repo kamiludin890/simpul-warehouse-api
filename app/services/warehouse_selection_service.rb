@@ -31,38 +31,45 @@ class WarehouseSelectionService
       raise SelectionError, "Ada produk yang tidak ditemukan"
     end
 
-    # Urutkan kandidat dari gudang terdekat.
-    warehouses = Warehouse.order(:distance_km, :id)
+    warehouses = Warehouse.order(:distance_km, :id).to_a
+    inventories_by_product = Inventory
+      .includes(:warehouse)
+      .where(product_id: @items.map { |item| item[:product_id] })
+      .order(:id)
+      .lock
+      .to_a
+      .group_by(&:product_id)
 
-    warehouses.each do |warehouse|
-      # Cold chain wajib memenuhi kedua syarat.
-      needs_cold_chain = @items.any? do |item|
-        products[item[:product_id]].requires_cold_chain == true
+    allocations = {}
+
+    @items.each do |item|
+      product = products[item[:product_id]]
+      inventory = warehouses.filter_map do |warehouse|
+        next if product.requires_cold_chain == true &&
+                !(warehouse.has_refrigerated_storage == true &&
+                  warehouse.has_refrigerated_vehicles == true)
+
+        candidate = inventories_by_product.fetch(item[:product_id], []).find do |record|
+          record.warehouse_id == warehouse.id &&
+            record.quantity_available >= item[:quantity]
+        end
+
+        candidate && [ warehouse, candidate ]
+      end.first
+
+      unless inventory
+        raise SelectionError,
+              "Tidak ada gudang yang memenuhi kebutuhan stok dan cold chain"
       end
 
-      if needs_cold_chain &&
-         !(warehouse.has_refrigerated_storage == true &&
-           warehouse.has_refrigerated_vehicles == true)
-        next
-      end
-
-      inventories = Inventory
-        .where(
-          warehouse_id: warehouse.id,
-          product_id: @items.map { |i| i[:product_id] }
-        )
-        .index_by(&:product_id)
-
-      # Semua produk dan jumlahnya harus tersedia di gudang yang sama.
-      enough_stock = @items.all? do |item|
-        inventory = inventories[item[:product_id]]
-        inventory && inventory.quantity_available >= item[:quantity]
-      end
-
-      return warehouse if enough_stock
+      warehouse, inventory_record = inventory
+      allocations[item[:product_id]] = {
+        warehouse: warehouse,
+        inventory: inventory_record,
+        quantity: item[:quantity]
+      }
     end
 
-    raise SelectionError,
-          "Tidak ada gudang yang memenuhi kebutuhan stok dan cold chain"
+    allocations
   end
 end

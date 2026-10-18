@@ -5,14 +5,21 @@ module Api
       before_action :set_order, only: %i[show update destroy]
 
       def index
-        render json: Order.includes(:warehouse, order_items: :product)
+        render json: Order.includes(
+          :warehouse,
+          order_items: %i[product warehouse]
+        ),
+               include: {
+                 warehouse: {},
+                 order_items: { include: %i[product warehouse] }
+               }
       end
 
       def show
         render json: @order.as_json(
           include: {
             warehouse: {},
-            order_items: { include: :product }
+            order_items: { include: %i[product warehouse] }
           }
         )
       end
@@ -37,31 +44,9 @@ module Api
         order = nil
 
         Order.transaction do
-          # Pilih gudang yang memenuhi kebutuhan pesanan.
-          warehouse = WarehouseSelectionService.new(items).call
-
-          # Kunci baris inventory untuk mencegah race condition.
-          inventories = Inventory
-            .where(
-              warehouse_id: warehouse.id,
-              product_id: items.map { |item| item[:product_id] }
-            )
-            .order(:id)
-            .lock
-            .to_a
-
-          inventory_by_product = inventories.index_by(&:product_id)
-
-          # Validasi ulang stok setelah baris dikunci.
-          items.each do |item|
-            inventory = inventory_by_product[item[:product_id]]
-
-            unless inventory &&
-                   inventory.quantity_available >= item[:quantity]
-              raise WarehouseSelectionService::SelectionError,
-                    "Stok berubah atau tidak mencukupi. Silakan coba lagi."
-            end
-          end
+          allocations = WarehouseSelectionService.new(items).call
+          selected_warehouses = allocations.values.map { |item| item[:warehouse] }.uniq
+          warehouse = selected_warehouses.one? ? selected_warehouses.first : nil
 
           # Buat order terlebih dahulu.
           order = Order.create!(
@@ -72,11 +57,13 @@ module Api
 
           # Simpan detail pesanan dan kurangi stok.
           items.each do |item|
-            inventory = inventory_by_product.fetch(item[:product_id])
+            allocation = allocations.fetch(item[:product_id])
+            inventory = allocation[:inventory]
 
             order.order_items.create!(
               product_id: item[:product_id],
-              quantity: item[:quantity]
+              quantity: item[:quantity],
+              warehouse: allocation[:warehouse]
             )
 
             inventory.update!(
@@ -91,7 +78,7 @@ module Api
           order: order.as_json(
             include: {
               warehouse: {},
-              order_items: { include: :product }
+              order_items: { include: %i[product warehouse] }
             }
           )
         }, status: :created
