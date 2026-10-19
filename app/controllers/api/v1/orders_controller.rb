@@ -24,20 +24,18 @@ module Api
         )
       end
 
+
       def create
         items = order_params[:order_items_attributes]
 
         raise WarehouseSelectionService::SelectionError,
               "Order items tidak boleh kosong" if items.blank?
 
-        # Gabungkan item dengan product_id yang sama.
         items = items.group_by { |item| item[:product_id].to_i }
-                     .map do |product_id, product_items|
+                    .map do |product_id, product_items|
           {
             product_id: product_id,
-            quantity: product_items.sum do |item|
-              item[:quantity].to_i
-            end
+            quantity: product_items.sum { |item| item[:quantity].to_i }
           }
         end
 
@@ -45,31 +43,51 @@ module Api
 
         Order.transaction do
           allocations = WarehouseSelectionService.new(items).call
-          selected_warehouses = allocations.values.map { |item| item[:warehouse] }.uniq
+
+          selected_warehouses = allocations.values
+            .flatten
+            .map { |allocation| allocation[:warehouse] }
+            .uniq(&:id)
+
           warehouse = selected_warehouses.one? ? selected_warehouses.first : nil
 
-          # Buat order terlebih dahulu.
           order = Order.create!(
             warehouse: warehouse,
             status: "confirmed",
             order_number: "ORD-#{SecureRandom.hex(5).upcase}"
           )
 
-          # Simpan detail pesanan dan kurangi stok.
           items.each do |item|
-            allocation = allocations.fetch(item[:product_id])
-            inventory = allocation[:inventory]
+            product_id = item[:product_id]
+            required_quantity = item[:quantity]
 
-            order.order_items.create!(
-              product_id: item[:product_id],
-              quantity: item[:quantity],
-              warehouse: allocation[:warehouse]
-            )
+            product_allocations = allocations.fetch(product_id)
 
-            inventory.update!(
-              quantity_available:
-                inventory.quantity_available - item[:quantity]
-            )
+            allocated_total = product_allocations.sum do |allocation|
+              allocation[:quantity]
+            end
+
+            unless allocated_total == required_quantity
+              raise WarehouseSelectionService::SelectionError,
+                    "Total alokasi produk ID #{product_id} tidak sesuai"
+            end
+
+            product_allocations.each do |allocation|
+              inventory = allocation[:inventory]
+              warehouse = allocation[:warehouse]
+              quantity = allocation[:quantity]
+
+              order.order_items.create!(
+                product_id: product_id,
+                quantity: quantity,
+                warehouse: warehouse
+              )
+
+              inventory.update!(
+                quantity_available:
+                  inventory.quantity_available - quantity
+              )
+            end
           end
         end
 
@@ -78,18 +96,20 @@ module Api
           order: order.as_json(
             include: {
               warehouse: {},
-              order_items: { include: %i[product warehouse] }
+              order_items: {
+                include: %i[product warehouse]
+              }
             }
           )
         }, status: :created
 
       rescue WarehouseSelectionService::SelectionError => e
         render json: { errors: [e.message] },
-               status: :unprocessable_entity
+              status: :unprocessable_entity
 
       rescue ActiveRecord::RecordInvalid => e
         render json: { errors: e.record.errors.full_messages },
-               status: :unprocessable_entity
+              status: :unprocessable_entity
       end
 
       def update

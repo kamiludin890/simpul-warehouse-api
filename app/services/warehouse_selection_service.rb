@@ -40,36 +40,54 @@ class WarehouseSelectionService
       .to_a
       .group_by(&:product_id)
 
+    
     allocations = {}
 
     @items.each do |item|
       product = products[item[:product_id]]
-      inventory = warehouses.filter_map do |warehouse|
-        next if product.requires_cold_chain == true &&
-                !(warehouse.has_refrigerated_storage == true &&
-                  warehouse.has_refrigerated_vehicles == true)
+      remaining_quantity = item[:quantity]
 
-        candidate = inventories_by_product.fetch(item[:product_id], []).find do |record|
-          record.warehouse_id == warehouse.id &&
-            record.quantity_available >= item[:quantity]
+      allocations[item[:product_id]] = []
+
+      warehouses.each do |warehouse|
+        if product.requires_cold_chain == true &&
+          !(warehouse.has_refrigerated_storage == true &&
+            warehouse.has_refrigerated_vehicles == true)
+          next
         end
+        inventory_record = inventories_by_product
+          .fetch(item[:product_id], [])
+          .find do |record|
+            record.warehouse_id == warehouse.id &&
+              record.quantity_available.to_i > 0
+          end
 
-        candidate && [ warehouse, candidate ]
-      end.first
+        next unless inventory_record
 
-      unless inventory
-        raise SelectionError,
-              "Tidak ada gudang yang memenuhi kebutuhan stok dan cold chain"
+        allocated_quantity = [
+          inventory_record.quantity_available.to_i,
+          remaining_quantity
+        ].min
+
+        allocations[item[:product_id]] << {
+          warehouse: warehouse,
+          inventory: inventory_record,
+          quantity: allocated_quantity
+        }
+
+        remaining_quantity -= allocated_quantity
+
+        break if remaining_quantity.zero?
       end
 
-      warehouse, inventory_record = inventory
-      allocations[item[:product_id]] = {
-        warehouse: warehouse,
-        inventory: inventory_record,
-        quantity: item[:quantity]
-      }
+      if remaining_quantity.positive?
+        raise SelectionError,
+              "Stok produk ID #{item[:product_id]} kurang " \
+              "#{remaining_quantity} unit dari total kebutuhan"
+      end
     end
 
     allocations
+
   end
 end
