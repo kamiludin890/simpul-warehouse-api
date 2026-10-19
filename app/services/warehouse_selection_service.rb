@@ -18,7 +18,6 @@ class WarehouseSelectionService
       raise SelectionError, "Product ID dan quantity harus valid"
     end
 
-    # Gabungkan item dengan product_id yang sama.
     @items = @items
       .group_by { |item| item[:product_id] }
       .map do |product_id, items|

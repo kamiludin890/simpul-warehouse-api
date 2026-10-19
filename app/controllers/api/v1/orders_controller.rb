@@ -9,10 +9,10 @@ module Api
           :warehouse,
           order_items: %i[product warehouse]
         ),
-               include: {
-                 warehouse: {},
-                 order_items: { include: %i[product warehouse] }
-               }
+          include: {
+            warehouse: {},
+            order_items: { include: %i[product warehouse] }
+          }
       end
 
       def show

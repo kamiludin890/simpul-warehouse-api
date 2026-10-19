@@ -63,7 +63,7 @@ ActiveRecord::Schema[8.1].define(version: 2026_10_18_132100) do
     t.string "code"
     t.string "name"
     t.string "city"
-    t.integer "distance_km"
+    t.decimal "distance_km"
     t.boolean "has_refrigerated_storage"
     t.boolean "has_refrigerated_vehicles"
     t.datetime "created_at", null: false
